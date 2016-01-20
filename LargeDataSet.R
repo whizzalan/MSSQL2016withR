@@ -1,22 +1,12 @@
 #### getData ####
 library(RevoScaleR)
-sampleDataDir <- rxGetOption("sampleDataDir")
-inputFile <- file.path(sampleDataDir, "AirlineDemoSmall.csv")
-airDS <- rxImport(inData = inputFile, outFile = "ADS.xdf",
-                  missingValueString = "M", stringsAsFactors = TRUE, overwrite = TRUE)
-head(airDS)
-dim(airDS)
-object.size(airDS)
-
-myData <-  rxReadXdf(airDS)
+myData <-  rxReadXdf("D:/Download/AirOnTime2012.xdf")
 day.names <- paste0(c("Mon", "Tues", "Wednes", "Thurs", "Fri", "Satur", "Sun"),
                     "day")
 levels(myData$DayOfWeek) <- day.names
-head(myData)
-## write New XDF ##
-rxDataStep(inData = myData, outFile = "ADSNew.xdf", overwrite = TRUE)
-
-
+myDat <- myData[1:1000000,c("ArrDelay","CRSDepTime","DayOfWeek")]
+head(myDat)
+dim(myDat)
 ##### write data to DB ####
 sqlHost <- "MSI\\POLOYAYA"
 sqlDatabase <- "Master" #"RevoTestDB"
@@ -28,33 +18,23 @@ sqlPw <- ""             #"george123"
 con <- sprintf("Driver=SQL Server;Server=%s;Database=%s;Uid=%s;Pwd=%s",
                sqlHost, sqlDatabase, sqlUser, sqlPw)
 
-sqlFraudTable <- "AirlineDemoSmall"
-sqlRowsPerRead = 10000
-
-# Connect to DB
-sqlFraudDS <- RxSqlServerData(connectionString = con,
-                              table = sqlFraudTable, 
-                              colInfo = list(ArrDelay = list(type = "integer"),
-                                             DayOfWeek = list(type = "factor", levels = day.names) 
-                              )
-                              , rowsPerRead = sqlRowsPerRead)
-
-rxDataStep(inData = "ADSNew.xdf", outFile = sqlFraudDS, overwrite = TRUE)
-
+sqlRowsPerRead = 200000
 
 ### Use RevoScaleR RxInSqlServer compute context ####
 
 # Define data object, including database table -------
 airData <- RxSqlServerData(
   connectionString = con, 
-  table = "AirlineDemoSmall",
+  table = "Airline",
   colInfo = list(ArrDelay = list(type = "integer"),
                  DayOfWeek = list(type = "factor", levels = day.names) 
-  )
+  ), rowsPerRead = sqlRowsPerRead
 )
 
-model.rxLinMod <- rxLinMod(ArrDelay ~ CRSDepTime + DayOfWeek - 1, airData)
+## wirte to DB
+rxDataStep(inData = myDat, outFile = airData, overwrite = TRUE)
 
+model.rxLinMod <- rxLinMod(ArrDelay ~ CRSDepTime + DayOfWeek - 1, airData)
 
 head(airData)
 
